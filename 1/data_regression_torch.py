@@ -120,4 +120,5 @@ plt.xlabel("x")
 plt.ylabel("y")
 plt.legend()
 plt.tight_layout()
+plt.savefig("regression_result.png", dpi=300) # 保存最终结果图片
 plt.show()
