@@ -5,7 +5,6 @@ import torch
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
-# 从当前目录新拆分的多个模块导入关联功能
 from dataset import MyDataSet, read_split_data
 from net_model import Net
 from utils import evaluate, save_curves, show_predictions, trainer
@@ -15,16 +14,19 @@ def main(args):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # 读取数据集划分
+    # 1. 准备数据划分（训练集 vs 验证集）
     train_images_path, train_images_label, val_images_path, val_images_label = read_split_data(
         args.data_root, args.val_rate
     )
 
+    # 2. 定义图像预处理流水线 (transforms)
+    # 因为不同图片的尺寸长宽可能不统一，必须统一压缩成正方形 (128x128)，然后转换成 PyTorch 需要的张量矩阵 (Tensor)
     data_transform = transforms.Compose([
         transforms.Resize([args.img_size, args.img_size]),
         transforms.ToTensor(),
     ])
 
+    # 3. 实例化我们自定义的数据集类
     train_dataset = MyDataSet(
         images_path=train_images_path,
         images_class=train_images_label,
@@ -36,15 +38,17 @@ def main(args):
         transform=data_transform,
     )
 
+    # 计算出能用的多线程数：用于后台往显存里读写图片
     nw = min([os.cpu_count() if os.cpu_count() is not None else 1, args.batch_size, 8])
     print(f"Using {nw} dataloader workers every process")
 
+    # 4. 包装成 DataLoader，管理并行、打乱和打包
     train_loader = DataLoader(
         train_dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
-        pin_memory=True,
-        drop_last=True,
+        batch_size=args.batch_size, # 每次处理多少张照片（批大小）
+        shuffle=True,               # 【重点】每次轮询时都要把牌洗乱，防止网络死记硬背顺序
+        pin_memory=True,            # 把数据常驻在内存中，可以稍微加速把数据往显存挪的过程
+        drop_last=True,             # 如果最后剩下的照片不够凑齐一整个批次，就丢弃掉
         num_workers=nw,
         collate_fn=train_dataset.collate_fn,
     )
@@ -52,18 +56,19 @@ def main(args):
     val_loader = DataLoader(
         val_dataset,
         batch_size=args.batch_size,
-        shuffle=False,
+        shuffle=False,              # 验证阶段只是“考试”，题目的顺序无所谓，不需要花时间打乱
         pin_memory=True,
-        drop_last=False,
+        drop_last=False,            # 哪怕剩下一两张也要测完，不能丢弃
         num_workers=nw,
         collate_fn=val_dataset.collate_fn,
     )
 
-    # 模型实例化与优化器
-    model = Net(num_classes=2).to(device)
+    # 5. 模型实例化与优化器
+    model = Net(num_classes=2).to(device)  # 把我们的“牛羊检测大模型”放进显卡大脑
+    # 选择 Adam 优化器（它就像一个带导航功能的油门，能在梯度下降时动态帮我们分配下降速度/步长）
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
-    # 结果保存路径准备
+    # 6. 结果保存路径准备
     os.makedirs(args.output_dir, exist_ok=True)
     best_model_path = os.path.join(args.output_dir, "best_model.pth")
     last_model_path = os.path.join(args.output_dir, "last_model.pth")
@@ -72,9 +77,9 @@ def main(args):
     train_loss_list, train_acc_list = [], []
     val_loss_list, val_acc_list = [], []
 
-    best_acc = 0.0
+    best_acc = 0.0  # 用来记录我们在验证集中见过的“最高得分”
 
-    # 开始多轮训练
+    # 7. 开始核心训练大循环（Epochs）
     for epoch in range(args.epochs):
         train_loss, train_acc = trainer(model, optimizer, train_loader, epoch, device)
         val_loss, val_acc = evaluate(model, val_loader, epoch, device)
@@ -94,7 +99,7 @@ def main(args):
             best_acc = val_acc
             torch.save(model.state_dict(), best_model_path)
 
-    # 保存最后一轮权重和学习过程曲线
+    # 所有轮次训练正式结束后，保存当下的模型并画图
     torch.save(model.state_dict(), last_model_path)
     save_curves(train_loss_list, train_acc_list, val_loss_list, val_acc_list, curves_path)
 
@@ -108,7 +113,7 @@ def main(args):
         show_predictions(
             model,
             val_images_path,
-            data_transform,
+            data_transform, # 注意：实战看图时也要保证预处理手法一模一样哦
             class_json_path="class_indices.json",
             device=device,
             num=6
