@@ -21,7 +21,6 @@ class Net(nn.Module):
             nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
         )
         self.classifier = nn.Sequential(
-            nn.Flatten(),
             nn.Linear(64 * 64 * 8, 1000),
             nn.ReLU(inplace=True),
             nn.Linear(1000, num_classes),
@@ -29,5 +28,6 @@ class Net(nn.Module):
 
     def forward(self, x):
         x = self.features(x)
+        x = x.view(x.size(0), -1)
         x = self.classifier(x)
         return x
