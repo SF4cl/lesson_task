@@ -21,7 +21,7 @@ def trainer(model, optimizer, data_loader, epoch, device):
     optimizer.zero_grad()  # 在开始新一轮的训练前，先清空优化器里上一步残留的梯度（防止累积）
 
     for step, data in enumerate(data_loader):
-        images, labels = data·
+        images, labels = data
         images, labels = images.to(device), labels.to(device)  # 将图片和标签移动到指定设备（如 GPU）上
 
         output = model(images)            # 前向传播：把图片喂给网络，得到初步预测概率
