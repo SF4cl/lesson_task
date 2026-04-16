@@ -23,6 +23,7 @@ class Net(nn.Module):
         self.classifier = nn.Sequential(
             nn.Linear(64 * 64 * 8, 1000),
             nn.ReLU(inplace=True),
+            nn.Dropout(p=0.5), # 加入 Dropout 层，随机让一半神经元失活，逼迫网络学习普遍规律
             nn.Linear(1000, num_classes),
         )
 

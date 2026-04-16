@@ -20,8 +20,16 @@ def main(args):
     )
 
     # 2. 定义图像预处理流水线 (transforms)
-    # 因为不同图片的尺寸长宽可能不统一，必须统一压缩成正方形 (128x128)，然后转换成 PyTorch 需要的张量矩阵 (Tensor)
-    data_transform = transforms.Compose([
+    # 【改动】对训练集加入数据增强，让模型在训练时看到更丰富的图像角度和方向，极大缓解过拟合
+    train_transform = transforms.Compose([
+        transforms.Resize([args.img_size, args.img_size]),
+        transforms.RandomHorizontalFlip(p=0.5), # 50%概率水平翻转
+        transforms.RandomRotation(15),          # 随机旋转±15度
+        transforms.ToTensor(),
+    ])
+    
+    # 验证集不需要数据增强，保持原样作为“公平考卷”
+    val_transform = transforms.Compose([
         transforms.Resize([args.img_size, args.img_size]),
         transforms.ToTensor(),
     ])
@@ -30,12 +38,12 @@ def main(args):
     train_dataset = MyDataSet(
         images_path=train_images_path,
         images_class=train_images_label,
-        transform=data_transform,
+        transform=train_transform,
     )
     val_dataset = MyDataSet(
         images_path=val_images_path,
         images_class=val_images_label,
-        transform=data_transform,
+        transform=val_transform,
     )
 
     # 计算出能用的多线程数：用于后台往显存里读写图片
@@ -65,8 +73,8 @@ def main(args):
 
     # 5. 模型实例化与优化器
     model = Net(num_classes=2).to(device)  # 把我们的“牛羊检测大模型”放进显卡大脑
-    # 选择 Adam 优化器（它就像一个带导航功能的油门，能在梯度下降时动态帮我们分配下降速度/步长）
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    # 加入 weight_decay=1e-4 进行 L2 正则化，惩罚过大的权重值，进一步缓解过拟合
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
 
     # 6. 结果保存路径准备
     os.makedirs(args.output_dir, exist_ok=True)
@@ -113,7 +121,7 @@ def main(args):
         show_predictions(
             model,
             val_images_path,
-            data_transform, # 注意：实战看图时也要保证预处理手法一模一样哦
+            val_transform, # 统一使用验证集的 Transform 看效果
             class_json_path="class_indices.json",
             device=device,
             num=6
@@ -133,9 +141,9 @@ def parse_args():
         help="数据集根目录（内含 cow/ sheep 子文件夹）",
     )
     parser.add_argument("--img-size", type=int, default=128, help="输入图像尺寸")
-    parser.add_argument("--batch-size", type=int, default=8, help="batch size")
-    parser.add_argument("--epochs", type=int, default=20, help="训练轮数")
-    parser.add_argument("--lr", type=float, default=1e-3, help="学习率")
+    parser.add_argument("--batch-size", type=int, default=16, help="batch size")
+    parser.add_argument("--epochs", type=int, default=30, help="训练轮数")
+    parser.add_argument("--lr", type=float, default=1e-4, help="学习率")
     parser.add_argument("--val-rate", type=float, default=0.2, help="验证集比例")
     parser.add_argument(
         "--output-dir",
