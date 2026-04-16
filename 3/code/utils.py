@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 from PIL import Image
-from tqdm import tqdm
 
 
 def trainer(model, optimizer, data_loader, epoch, device):
@@ -21,9 +20,8 @@ def trainer(model, optimizer, data_loader, epoch, device):
 
     optimizer.zero_grad()  # 在开始新一轮的训练前，先清空优化器里上一步残留的梯度（防止累积）
 
-    progress_bar = tqdm(data_loader, file=sys.stdout)  # 包装 data_loader，在控制台打印进度条
-    for step, data in enumerate(progress_bar):
-        images, labels = data
+    for step, data in enumerate(data_loader):
+        images, labels = data·
         images, labels = images.to(device), labels.to(device)  # 将图片和标签移动到指定设备（如 GPU）上
 
         output = model(images)            # 前向传播：把图片喂给网络，得到初步预测概率
@@ -36,20 +34,23 @@ def trainer(model, optimizer, data_loader, epoch, device):
         loss.backward()             # 反向传播：根据损失大小，自动计算参数更新所需的梯度
         accu_loss += loss.detach()  # 累计这一个批次的损失（detach 可以切断计算图，节省显存）
 
-        # 实时更新进度条后面显示的日志信息
-        progress_bar.desc = (
-            f"[train epoch {epoch}] "
+        # 实时更新打印显示的日志信息
+        sys.stdout.write(
+            f"\r[train epoch {epoch}] "
             f"loss: {accu_loss.item() / (step + 1):.3f}, "
             f"acc: {accu_num.item() / sample_num:.3f}"
         )
+        sys.stdout.flush()
 
         # 异常阻断：如果损失变成无限大/无效值（梯度爆炸），立刻停止程序
         if not torch.isfinite(loss):
-            print("WARNING: non-finite loss, ending training", loss)
+            print("\nWARNING: non-finite loss, ending training", loss)
             sys.exit(1)
 
         optimizer.step()       # 优化器工作：根据刚才计算出的梯度，正式调整神经元的权重参数
         optimizer.zero_grad()  # 再次清空梯度，以免污染下一个批次
+    
+    print() # 换行
 
     # 循环结束后，返回这一轮训练的“平均损失”和“整体准确率”
     return accu_loss.item() / (step + 1), accu_num.item() / sample_num
@@ -65,8 +66,7 @@ def evaluate(model, data_loader, epoch, device):
     accu_num = torch.zeros(1, device=device)
     sample_num = 0
 
-    progress_bar = tqdm(data_loader, file=sys.stdout)
-    for step, data in enumerate(progress_bar):
+    for step, data in enumerate(data_loader):
         images, labels = data
         images, labels = images.to(device), labels.to(device)
 
@@ -78,12 +78,15 @@ def evaluate(model, data_loader, epoch, device):
         sample_num += images.shape[0]
         accu_loss += loss
 
-        progress_bar.desc = (
-            f"[val epoch {epoch}] "
+        sys.stdout.write(
+            f"\r[val epoch {epoch}] "
             f"loss: {accu_loss.item() / (step + 1):.3f}, "
             f"acc: {accu_num.item() / sample_num:.3f}"
         )
-
+        sys.stdout.flush()
+        
+    print() # 换行
+    
     # 返回这一轮“考试”的平均分及正确率
     return accu_loss.item() / (step + 1), accu_num.item() / sample_num
 
